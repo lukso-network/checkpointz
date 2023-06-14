@@ -3,6 +3,7 @@ WORKDIR /src
 COPY go.sum go.mod ./
 RUN go mod download
 COPY . .
+RUN make build-web
 RUN CGO_ENABLED=0 go build -o /bin/app .
 
 FROM ubuntu:latest

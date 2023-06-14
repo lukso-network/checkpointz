@@ -43,12 +43,6 @@ jobs:
           gcloud auth login --brief --cred-file="${{ steps.gcpauth.outputs.credentials_file_path }}"
           gcloud auth configure-docker europe-docker.pkg.dev
 
-      - name: Before hooks
-        run: |-
-          go mod tidy
-          go generate ./...
-          make build-web
-
       # Docker Build and Push to the GCR
       - name: Build & Push docker
         uses: docker/build-push-action@v2
