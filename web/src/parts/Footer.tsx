@@ -31,7 +31,9 @@ export default function Footer() {
               {data?.data?.brand_image_url && (
                 <img src={data.data.brand_image_url} alt="logo" className="h-10 w-auto" />
               )}
-              <span className="font-bold text-xl pl-2 text-gray-600">{data?.data?.brand_name}</span>
+              {data?.data?.brand_name && (
+                <span className="font-bold text-xl pl-2 text-gray-600">{data.data.brand_name}</span>
+              )}
             </a>
           </div>
         </div>

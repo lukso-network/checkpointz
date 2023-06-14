@@ -15,7 +15,7 @@ export default function Status() {
       <div className="z-10 relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <h1 className="font-display text-2xl font-bold text-center tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500 sm:text-4xl lg:text-5xl">
-            An Ethereum beacon chain checkpoint sync provider
+            The LUKSO beacon chain checkpoint sync provider
           </h1>
         </div>
         <div className="max-w-4xl mx-auto pt-4 sm:pt-10">
