@@ -53,9 +53,11 @@ export default function Header() {
                   {data?.data?.brand_image_url && (
                     <img src={data.data.brand_image_url} alt="logo" className="h-12 w-auto" />
                   )}
-                  <span className="font-bold text-2xl pl-2 text-gray-600">
-                    {data?.data?.brand_name}
-                  </span>
+                  {data?.data?.brand_name && (
+                    <span className="font-bold text-2xl pl-2 text-gray-600">
+                      {data.data.brand_name}
+                    </span>
+                  )}
                 </>
               )}
             </a>
@@ -145,7 +147,7 @@ export default function Header() {
                           <Container className="relative">
                             <div className="mx-auto max-w-2xl lg:max-w-4xl lg:px-12">
                               <h1 className="font-display text-4xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-600 to-pink-600 sm:text-5xl lg:text-6xl">
-                                An Ethereum beacon chain checkpoint sync provider
+                                The LUKSO beacon chain checkpoint sync provider
                               </h1>
                               <div className="mt-6 space-y-6 font-display text-xl sm:text-2xl tracking-tight text-gray-600">
                                 <h4 className="font-display text-3xl font-bold tracking-tighter bg-clip-text">
