@@ -1,9 +1,14 @@
+FROM node:latest AS frontendBuilder
+WORKDIR /src
+COPY . .
+RUN make build-web
+
 FROM golang:1.20 AS builder
 WORKDIR /src
 COPY go.sum go.mod ./
 RUN go mod download
 COPY . .
-RUN make build-web
+COPY --from=frontendBuilder /src/web /src/web
 RUN CGO_ENABLED=0 go build -o /bin/app .
 
 FROM ubuntu:latest
