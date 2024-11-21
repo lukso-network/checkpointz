@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ func (h *Handler) Register(ctx context.Context, router *httprouter.Router) error
 	router.GET("/eth/v1/beacon/blocks/:block_id/root", h.wrappedHandler(h.handleEthV1BeaconBlocksRoot))
 	router.GET("/eth/v1/beacon/states/:state_id/finality_checkpoints", h.wrappedHandler(h.handleEthV1BeaconStatesFinalityCheckpoints))
 	router.GET("/eth/v1/beacon/deposit_snapshot", h.wrappedHandler(h.handleEthV1BeaconDepositSnapshot))
+	router.GET("/eth/v1/beacon/blob_sidecars/:block_id", h.wrappedHandler(h.handleEthV1BeaconBlobSidecars))
 
 	router.GET("/eth/v1/config/spec", h.wrappedHandler(h.handleEthV1ConfigSpec))
 	router.GET("/eth/v1/config/deposit_contract", h.wrappedHandler(h.handleEthV1ConfigDepositContract))
@@ -95,7 +97,7 @@ func (h *Handler) wrappedHandler(handler func(ctx context.Context, r *http.Reque
 			"path":         r.URL.Path,
 			"content_type": contentType,
 			"accept":       r.Header.Get("Accept"),
-		}).Debug("Handling request")
+		}).Trace("Handling request")
 
 		h.metrics.ObserveRequest(r.Method, registeredPath)
 
@@ -238,20 +240,35 @@ func (h *Handler) handleEthV2DebugBeaconStates(ctx context.Context, r *http.Requ
 
 	rsp := NewSuccessResponse(ContentTypeResolvers{
 		ContentTypeSSZ: func() ([]byte, error) {
-			return *state, nil
+			switch state.Version {
+			case spec.DataVersionPhase0:
+				return state.Phase0.MarshalSSZ()
+			case spec.DataVersionAltair:
+				return state.Altair.MarshalSSZ()
+			case spec.DataVersionBellatrix:
+				return state.Bellatrix.MarshalSSZ()
+			case spec.DataVersionCapella:
+				return state.Capella.MarshalSSZ()
+			case spec.DataVersionDeneb:
+				return state.Deneb.MarshalSSZ()
+			default:
+				return nil, fmt.Errorf("unknown state version: %s", state.Version.String())
+			}
 		},
 	})
 
 	switch id.Type() {
-	case eth.StateIDRoot, eth.StateIDGenesis, eth.StateIDSlot:
-		// TODO(sam.calder-mason): This should be calculated using the Weak-Subjectivity period.
+	case eth.StateIDSlot:
 		rsp.SetCacheControl("public, s-max-age=6000")
 	case eth.StateIDFinalized:
-		// TODO(sam.calder-mason): This should be calculated using the Weak-Subjectivity period.
 		rsp.SetCacheControl("public, s-max-age=180")
+	case eth.StateIDRoot:
+		rsp.SetCacheControl("public, s-max-age=6000")
 	case eth.StateIDHead:
 		rsp.SetCacheControl("public, s-max-age=30")
 	}
+
+	rsp.SetEthConsensusVersion(state.Version.String())
 
 	return rsp, nil
 }
@@ -439,7 +456,7 @@ func (h *Handler) handleCheckpointzStatus(ctx context.Context, r *http.Request, 
 		},
 	})
 
-	rsp.SetCacheControl("public, s-max-age=30")
+	rsp.SetCacheControl("public, s-max-age=5")
 
 	return rsp, nil
 }
@@ -483,7 +500,7 @@ func (h *Handler) handleCheckpointzBeaconSlots(ctx context.Context, r *http.Requ
 		},
 	})
 
-	rsp.SetCacheControl("public, s-max-age=30")
+	rsp.SetCacheControl("public, s-max-age=5")
 
 	return rsp, nil
 }
@@ -509,7 +526,7 @@ func (h *Handler) handleCheckpointzBeaconSlot(ctx context.Context, r *http.Reque
 		},
 	})
 
-	rsp.SetCacheControl("public, s-max-age=60")
+	rsp.SetCacheControl("public, s-max-age=5")
 
 	return rsp, nil
 }
@@ -586,4 +603,49 @@ func (h *Handler) handleEthV1BeaconDepositSnapshot(ctx context.Context, r *http.
 			return json.Marshal(snapshot)
 		},
 	}), nil
+}
+
+func (h *Handler) handleEthV1BeaconBlobSidecars(ctx context.Context, r *http.Request, p httprouter.Params, contentType ContentType) (*HTTPResponse, error) {
+	if err := ValidateContentType(contentType, []ContentType{ContentTypeJSON}); err != nil {
+		return NewUnsupportedMediaTypeResponse(nil), err
+	}
+
+	id, err := eth.NewBlockIdentifier(p.ByName("block_id"))
+	if err != nil {
+		return NewBadRequestResponse(nil), err
+	}
+
+	queryParams := r.URL.Query()
+	indicesRaw := queryParams["indices"]
+
+	indices := make([]int, 0, len(indicesRaw))
+
+	for _, index := range indicesRaw {
+		converted, errr := strconv.Atoi(index)
+		if errr != nil {
+			return NewBadRequestResponse(nil), errr
+		}
+
+		indices = append(indices, converted)
+	}
+
+	sidecars, err := h.eth.BlobSidecars(ctx, id, indices)
+	if err != nil {
+		return NewInternalServerErrorResponse(nil), err
+	}
+
+	rsp := NewSuccessResponse(ContentTypeResolvers{
+		ContentTypeJSON: func() ([]byte, error) {
+			return json.Marshal(sidecars)
+		},
+	})
+
+	switch id.Type() {
+	case eth.BlockIDFinalized, eth.BlockIDRoot:
+		rsp.SetCacheControl("public, s-max-age=6000")
+	default:
+		rsp.SetCacheControl("public, s-max-age=15")
+	}
+
+	return rsp, nil
 }

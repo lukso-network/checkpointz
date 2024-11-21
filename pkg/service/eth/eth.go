@@ -6,6 +6,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/beacon/pkg/beacon/api/types"
 	"github.com/ethpandaops/beacon/pkg/beacon/state"
@@ -111,7 +112,7 @@ func (h *Handler) ConfigSpec(ctx context.Context) (*state.Spec, error) {
 		}
 	}()
 
-	return h.provider.Spec(ctx)
+	return h.provider.Spec()
 }
 
 // ForkSchedule returns the upcoming forks.
@@ -128,7 +129,7 @@ func (h *Handler) ForkSchedule(ctx context.Context) ([]*state.ScheduledFork, err
 		}
 	}()
 
-	sp, err := h.provider.Spec(ctx)
+	sp, err := h.provider.Spec()
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +156,7 @@ func (h *Handler) DepositContract(ctx context.Context) (*DepositContract, error)
 		}
 	}()
 
-	sp, err := h.provider.Spec(ctx)
+	sp, err := h.provider.Spec()
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +184,10 @@ func (h *Handler) DepositSnapshot(ctx context.Context) (*types.DepositSnapshot, 
 	finality, err := h.provider.Finalized(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if finality == nil || finality.Finalized == nil {
+		return nil, fmt.Errorf("no finality known")
 	}
 
 	snapshot, err := h.provider.GetDepositSnapshot(ctx, finality.Finalized.Epoch)
@@ -262,7 +267,7 @@ func (h *Handler) PeerCount(ctx context.Context) (uint64, error) {
 }
 
 // BeaconState returns the beacon state for the given state id.
-func (h *Handler) BeaconState(ctx context.Context, stateID StateIdentifier) (*[]byte, error) {
+func (h *Handler) BeaconState(ctx context.Context, stateID StateIdentifier) (*spec.VersionedBeaconState, error) {
 	var err error
 
 	const call = "beacon_state"
@@ -431,4 +436,141 @@ func (h *Handler) BlockRoot(ctx context.Context, blockID BlockIdentifier) (phase
 	default:
 		return phase0.Root{}, fmt.Errorf("invalid block id: %v", blockID.String())
 	}
+}
+
+// BlobSidecars returns the blob sidecars for the given block ID.
+func (h *Handler) BlobSidecars(ctx context.Context, blockID BlockIdentifier, indices []int) ([]*deneb.BlobSidecar, error) {
+	var err error
+
+	const call = "blob_sidecars"
+
+	h.metrics.ObserveCall(call, blockID.Type().String())
+
+	defer func() {
+		if err != nil {
+			h.metrics.ObserveErrorCall(call, blockID.Type().String())
+		}
+	}()
+
+	slot := phase0.Slot(0)
+
+	switch blockID.Type() {
+	case BlockIDGenesis:
+		//nolint:govet // False positive
+		block, err := h.provider.GetBlockBySlot(ctx, phase0.Slot(0))
+		if err != nil {
+			return nil, err
+		}
+
+		if block == nil {
+			return nil, fmt.Errorf("no genesis block")
+		}
+
+		sl, err := block.Slot()
+		if err != nil {
+			return nil, err
+		}
+
+		slot = sl
+	case BlockIDSlot:
+		//nolint:govet // False positive
+		sslot, err := NewSlotFromString(blockID.Value())
+		if err != nil {
+			return nil, err
+		}
+
+		block, err := h.provider.GetBlockBySlot(ctx, sslot)
+		if err != nil {
+			return nil, err
+		}
+
+		if block == nil {
+			return nil, fmt.Errorf("no block for slot %v", sslot)
+		}
+
+		sl, err := block.Slot()
+		if err != nil {
+			return nil, err
+		}
+
+		slot = sl
+	case BlockIDRoot:
+		//nolint:govet // False positive
+		root, err := blockID.AsRoot()
+		if err != nil {
+			return nil, err
+		}
+
+		block, err := h.provider.GetBlockByRoot(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+
+		if block == nil {
+			return nil, fmt.Errorf("no block for root %v", root)
+		}
+
+		sl, err := block.Slot()
+		if err != nil {
+			return nil, err
+		}
+
+		slot = sl
+	case BlockIDFinalized:
+		//nolint:govet // False positive
+		finality, err := h.provider.Finalized(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if finality == nil || finality.Finalized == nil {
+			return nil, fmt.Errorf("no finality")
+		}
+
+		block, err := h.provider.GetBlockByRoot(ctx, finality.Finalized.Root)
+		if err != nil {
+			return nil, err
+		}
+
+		if block == nil {
+			return nil, fmt.Errorf("no block for finalized root %v", finality.Finalized.Root)
+		}
+
+		sl, err := block.Slot()
+		if err != nil {
+			return nil, err
+		}
+
+		slot = sl
+	default:
+		return nil, fmt.Errorf("invalid block id: %v", blockID.String())
+	}
+
+	sidecars, err := h.provider.GetBlobSidecarsBySlot(ctx, slot)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(indices) == 0 {
+		return sidecars, nil
+	}
+
+	filtered := make([]*deneb.BlobSidecar, 0, len(indices))
+
+	for _, index := range indices {
+		if index < 0 {
+			return nil, fmt.Errorf("invalid index %v", index)
+		}
+
+		// Find the sidecar with the given index
+		for i, sidecar := range sidecars {
+			if index == int(sidecar.Index) {
+				filtered = append(filtered, sidecars[i])
+
+				break
+			}
+		}
+	}
+
+	return filtered, nil
 }

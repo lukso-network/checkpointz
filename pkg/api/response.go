@@ -42,6 +42,10 @@ func (r HTTPResponse) SetCacheControl(v string) {
 	r.Headers["Cache-Control"] = v
 }
 
+func (r HTTPResponse) SetEthConsensusVersion(version string) {
+	r.Headers["Eth-Consensus-Version"] = version
+}
+
 func NewSuccessResponse(resolvers ContentTypeResolvers) *HTTPResponse {
 	return &HTTPResponse{
 		resolvers:  resolvers,
@@ -72,7 +76,7 @@ func NewBadRequestResponse(resolvers ContentTypeResolvers) *HTTPResponse {
 func NewUnsupportedMediaTypeResponse(resolvers ContentTypeResolvers) *HTTPResponse {
 	return &HTTPResponse{
 		resolvers:  resolvers,
-		StatusCode: http.StatusUnsupportedMediaType,
+		StatusCode: http.StatusNotAcceptable,
 		Headers:    make(map[string]string),
 		ExtraData:  make(map[string]interface{}),
 	}
