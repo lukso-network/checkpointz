@@ -1,4 +1,4 @@
-FROM node:latest AS frontend-builder
+FROM node:lts AS frontend-builder
 WORKDIR /src
 COPY . .
 RUN make build-web
