@@ -698,12 +698,11 @@ func (d *Default) UpstreamsStatus(ctx context.Context) (map[string]*UpstreamStat
 
 		rsp[node.Config.Name].Healthy = node.Beacon.Status().Healthy()
 
-		//nolint:gocritic // invalid
-		if spec, err := node.Beacon.Spec(); err == nil {
-			network := spec.ConfigName
+		if nodeSpec, err := node.Beacon.Spec(); err == nil {
+			network := nodeSpec.ConfigName
 			if network == "" {
 				// Fall back to our static map.
-				network = eth.GetNetworkName(spec.DepositChainID)
+				network = eth.GetNetworkName(nodeSpec.DepositChainID)
 			}
 
 			rsp[node.Config.Name].NetworkName = network
@@ -743,6 +742,7 @@ func (d *Default) ListFinalizedSlots(ctx context.Context) ([]phase0.Slot, error)
 
 	latestSlot := phase0.Slot(uint64(finality.Finalized.Epoch) * uint64(sp.SlotsPerEpoch))
 
+	//nolint:gosec // This is not a security issue
 	for i, val := uint64(latestSlot), uint64(latestSlot)-uint64(sp.SlotsPerEpoch)*uint64(d.config.HistoricalEpochCount); i > val; i -= uint64(sp.SlotsPerEpoch) {
 		slots = append(slots, phase0.Slot(i))
 	}

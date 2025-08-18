@@ -199,12 +199,18 @@ func (h *Handler) handleEthV2BeaconBlocks(ctx context.Context, r *http.Request, 
 			ContentTypeJSON: block.Deneb.MarshalJSON,
 			ContentTypeSSZ:  block.Deneb.MarshalSSZ,
 		})
+	case spec.DataVersionElectra:
+		rsp = NewSuccessResponse(ContentTypeResolvers{
+			ContentTypeJSON: block.Electra.MarshalJSON,
+			ContentTypeSSZ:  block.Electra.MarshalSSZ,
+		})
 	default:
 		return NewInternalServerErrorResponse(nil), errors.New("unknown block version")
 	}
 
 	rsp.AddExtraData("version", block.Version.String())
-	rsp.AddExtraData("execution_optimistic", "false")
+	rsp.AddExtraData("execution_optimistic", false)
+	rsp.AddExtraData("finalized", true) // We only serve finalized data
 
 	switch blockID.Type() {
 	case eth.BlockIDRoot, eth.BlockIDGenesis, eth.BlockIDSlot:
@@ -251,6 +257,8 @@ func (h *Handler) handleEthV2DebugBeaconStates(ctx context.Context, r *http.Requ
 				return state.Capella.MarshalSSZ()
 			case spec.DataVersionDeneb:
 				return state.Deneb.MarshalSSZ()
+			case spec.DataVersionElectra:
+				return state.Electra.MarshalSSZ()
 			default:
 				return nil, fmt.Errorf("unknown state version: %s", state.Version.String())
 			}
@@ -629,7 +637,7 @@ func (h *Handler) handleEthV1BeaconBlobSidecars(ctx context.Context, r *http.Req
 		indices = append(indices, converted)
 	}
 
-	sidecars, err := h.eth.BlobSidecars(ctx, id, indices)
+	sidecars, dataVersion, err := h.eth.BlobSidecars(ctx, id, indices)
 	if err != nil {
 		return NewInternalServerErrorResponse(nil), err
 	}
@@ -639,6 +647,12 @@ func (h *Handler) handleEthV1BeaconBlobSidecars(ctx context.Context, r *http.Req
 			return json.Marshal(sidecars)
 		},
 	})
+
+	rsp.SetEthConsensusVersion(strings.ToLower(dataVersion.String()))
+
+	rsp.AddExtraData("version", strings.ToLower(dataVersion.String()))
+	rsp.AddExtraData("execution_optimistic", false)
+	rsp.AddExtraData("finalized", true) // We only serve finalized data
 
 	switch id.Type() {
 	case eth.BlockIDFinalized, eth.BlockIDRoot:
